@@ -32,6 +32,11 @@ def leer_secreto(nombre, defecto=""):
 RUC_OK = str(leer_secreto("RUC"))
 CLAVE_OK = str(leer_secreto("CLAVE"))
 
+EMPRESA = "LA ESPUMOSA EXPRESS"
+SEDE = "SEDE PRINCIPAL"
+MESES = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio",
+         "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+
 # --- TARIFAS DE SERVICIOS (edita aquí los precios) ---
 SERVICIOS = {
     "Ropa por Kilo": 5.00,
@@ -128,6 +133,9 @@ def kpi(icono, titulo, valor, desc, color="#0284c7", tag=None, borde=False, valo
         f"<div class='kpi-desc'>{desc}</div></div>"
     )
 
+def ir_a(modulo):
+    st.session_state["modulo"] = modulo
+
 if "autenticado" not in st.session_state: st.session_state.autenticado = False
 if "ordenes" not in st.session_state: st.session_state.ordenes = []
 if "ultima_orden" not in st.session_state: st.session_state.ultima_orden = None
@@ -185,24 +193,70 @@ else:
         menu_modulo = st.radio(
             "MÓDULOS DEL SISTEMA",
             ["📊 Tablero de Control", "📥 Orden de Servicio", "🧾 Facturación Electrónica", "📈 Reportes y Dashboards"],
-            label_visibility="collapsed"
+            label_visibility="collapsed",
+            key="modulo"
         )
         st.markdown("---")
         if st.button("🚪 Cerrar Turno (Salir)"):
             st.session_state.autenticado = False
             st.rerun()
 
-    # Barra superior (hora de Perú)
-    ahora = datetime.now(timezone(timedelta(hours=-5))).strftime("%d/%m/%Y %H:%M")
-    st.markdown(
-        f"<div class='topbar'>"
-        f"<div class='chip'><span class='chip-k'>🚩 Sucursal</span><span class='chip-v'>SEDE PRINCIPAL</span></div>"
-        f"<div class='chip'><span class='chip-k'>🕒 Fecha</span><span class='chip-v'>{ahora}</span></div>"
-        f"</div>", unsafe_allow_html=True)
+    # Barra superior: el reloj toma la fecha y hora de TU computadora (navegador)
+    TOPBAR_HTML = '''
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;800&display=swap');
+body{margin:0;font-family:'Plus Jakarta Sans',sans-serif;}
+.bar{display:flex;gap:12px;flex-wrap:wrap;}
+.chip{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px 16px;box-shadow:0 1px 3px rgba(15,23,42,.04);}
+.k{font-size:.78rem;font-weight:600;color:#64748b;border-right:1px solid #e2e8f0;padding-right:12px;}
+.v{font-size:.88rem;font-weight:800;color:#0f172a;}
+</style>
+<div class="bar">
+  <div class="chip"><span class="k">&#128681; Sucursal</span><span class="v">__SEDE__</span></div>
+  <div class="chip"><span class="k">&#128338; Fecha</span><span class="v" id="reloj">--</span></div>
+</div>
+<script>
+function p(n){return String(n).padStart(2,'0');}
+function tick(){var d=new Date();document.getElementById('reloj').textContent=
+  p(d.getDate())+'/'+p(d.getMonth()+1)+'/'+d.getFullYear()+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());}
+tick();setInterval(tick,1000);
+</script>'''
+    try:
+        import streamlit.components.v1 as components
+        components.html(TOPBAR_HTML.replace("__SEDE__", SEDE), height=64)
+    except Exception:
+        ahora = datetime.now(timezone(timedelta(hours=-5))).strftime("%d/%m/%Y %H:%M")
+        st.markdown(
+            f"<div class='topbar'>"
+            f"<div class='chip'><span class='chip-k'>🚩 Sucursal</span><span class='chip-v'>{SEDE}</span></div>"
+            f"<div class='chip'><span class='chip-k'>🕒 Fecha</span><span class='chip-v'>{ahora}</span></div>"
+            f"</div>", unsafe_allow_html=True)
 
     if menu_modulo == "📊 Tablero de Control":
-        st.markdown("<h1 class='page-title'>Dashboard General</h1>", unsafe_allow_html=True)
-        st.caption("Resumen financiero y operativo de las últimas actividades.")
+        hoy = datetime.now(timezone(timedelta(hours=-5)))
+
+        # Panel operativo
+        with st.container(border=True):
+            p1, p2, p3 = st.columns([4, 1.2, 1.2], vertical_alignment="center")
+            with p1:
+                st.markdown(
+                    f"<div style='display:flex;align-items:center;gap:18px;'>"
+                    f"<div style='width:58px;height:58px;border-radius:16px;background:#2563eb;color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.7rem;box-shadow:0 8px 18px rgba(37,99,235,.3);'>🧼</div>"
+                    f"<div><div style='font-size:.7rem;font-weight:800;letter-spacing:1px;color:#2563eb;'>PANEL OPERATIVO</div>"
+                    f"<div style='font-size:1.7rem;font-weight:800;color:#0f172a;letter-spacing:-.4px;line-height:1.15;'>{EMPRESA}</div>"
+                    f"<div style='font-size:.8rem;color:#475569;margin-top:4px;'>📍 {SEDE} &nbsp;&nbsp; "
+                    f"<span class='kpi-tag' style='background:#dbeafe;color:#1d4ed8;'>ADMINISTRADOR</span></div></div></div>",
+                    unsafe_allow_html=True)
+            with p2:
+                st.button("🔍 Consultar", on_click=ir_a, args=("📈 Reportes y Dashboards",), key="btn_consultar")
+            with p3:
+                st.button("＋ Nueva orden", on_click=ir_a, args=("📥 Orden de Servicio",), key="btn_nueva")
+
+        # Resumen de operación
+        st.markdown(
+            f"<p class='card-title' style='font-size:1.35rem;margin-top:14px;'>Resumen de operación</p>"
+            f"<p class='card-sub'>{MESES[hoy.month]} {hoy.year} · {SEDE.title()} · datos de ejemplo hasta conectar la base de datos</p>",
+            unsafe_allow_html=True)
 
         # Fila 1 de Indicadores
         f1_c1, f1_c2, f1_c3, f1_c4 = st.columns(4)
