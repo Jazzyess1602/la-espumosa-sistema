@@ -79,7 +79,7 @@ if not st.session_state.autenticado:
     col_izq, col_der = st.columns([1, 1.2], gap="large")
     
     with col_izq:
-        img_html = f"<img class='gato-centrado' src='data:image/png;base64,{gato_b64}' />" if gato_b64 else "<p style='color:yellow;'>🐱 Subiendo mascota...</p>"
+        img_html = f"<img class='gato-centrado' src='data:image/png;base64,{gato_b64}' />" if gato_b64 else "<p style='color:yellow;'>⚠️ Cargando mascota...</p>"
         st.markdown(f"""
             <div class='bloque-azul-corporativo'>
                 <h1 style='color:white; font-size:2.6rem; font-weight:900; margin:0;'>La Espumosa Express</h1>
@@ -173,10 +173,10 @@ else:
         c1, c2 = st.columns(2)
         with c1:
             dni_c = st.text_input("DNI del Cliente:")
-nom_c = st.text_input("Nombre Completo:")
-tel_c = st.text_input("WhatsApp Celular:", max_chars=9)
-with c2:
-serv = st.selectbox("Tipo de Servicio:", ["Ropa por Kilo (S/ 5.00)", "Edredón 2 Plazas (S/ 15.00)"])
-cant = st.number_input("Cantidad / Kilos:", min_value=0.0, step=0.5)
-if st.button("💾 GUARDAR PEDIDO"):
-st.success("¡Pedido registrado exitosamente!")
+            nom_c = st.text_input("Nombre Completo:")
+            tel_c = st.text_input("WhatsApp Celular:", max_chars=9)
+        with c2:
+            serv = st.selectbox("Tipo de Servicio:", ["Ropa por Kilo (S/ 5.00)", "Edredón 2 Plazas (S/ 15.00)"])
+            cant = st.number_input("Cantidad / Kilos:", min_value=0.0, step=0.5)
+        if st.button("💾 GUARDAR PEDIDO"):
+            st.success("¡Pedido registrado exitosamente!")
