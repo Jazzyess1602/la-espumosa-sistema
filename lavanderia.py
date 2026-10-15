@@ -2,6 +2,7 @@ import streamlit as st
 import urllib.parse
 import base64
 import pandas as pd
+from datetime import datetime
 
 # Configuración de pantalla completa estilo Software de Escritorio Comercial
 st.set_page_config(
@@ -20,15 +21,39 @@ def obtener_base64(ruta):
 
 gato_b64 = obtener_base64("gato.png")
 
+# --- CREDENCIALES (se leen de Streamlit Secrets, NO van escritas en el código) ---
+def leer_secreto(nombre, defecto=""):
+    try:
+        return st.secrets.get(nombre, defecto)
+    except Exception:
+        return defecto
+
+RUC_OK = str(leer_secreto("RUC"))
+CLAVE_OK = str(leer_secreto("CLAVE"))
+
+# --- TARIFAS DE SERVICIOS (edita aquí los precios) ---
+SERVICIOS = {
+    "Ropa por Kilo": 5.00,
+    "Edredón 2 Plazas": 15.00,
+}
+
 # --- MAQUETACIÓN VISUAL CON COLORES EXCLUSIVOS DE LA ESPUMOSA ---
 st.markdown("""
     <style>
-    #MainMenu {visibility: hidden;} footer {visibility: hidden;} header {visibility: hidden;}
+    /* Oculta marca de Streamlit sin perder el botón del menú lateral en celular */
+    #MainMenu {visibility: hidden;} footer {visibility: hidden;}
+    [data-testid="stToolbar"], [data-testid="stDecoration"] {display: none;}
+    header[data-testid="stHeader"] { background: transparent; }
+    .block-container { padding-top: 2rem; }
     .stApp { background-color: #f0fdfa; }
     
     /* Menú Lateral Estilo Premium */
     [data-testid="stSidebar"] { background-color: #0369a1; border-right: 2px solid #0284c7; }
     [data-testid="stSidebar"] * { color: #ffffff !important; }
+    [data-testid="stSidebar"] div[role="radiogroup"] label {
+        padding: 8px 10px; border-radius: 10px; width: 100%;
+    }
+    [data-testid="stSidebar"] div[role="radiogroup"] label:hover { background-color: rgba(255,255,255,0.12); }
     
     /* Tarjetas de Indicadores con tus colores de marca */
     .kpi-card {
@@ -38,7 +63,10 @@ st.markdown("""
         border: 2px solid #e0f2fe;
         box-shadow: 0 4px 12px rgba(2, 132, 199, 0.05);
         margin-bottom: 15px;
+        min-height: 128px;
+        transition: transform .15s ease, box-shadow .15s ease;
     }
+    .kpi-card:hover { transform: translateY(-3px); box-shadow: 0 8px 18px rgba(2, 132, 199, 0.12); }
     .kpi-title { font-size: 0.85rem; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
     .kpi-value { font-size: 1.8rem; font-weight: 800; margin-top: 5px; margin-bottom: 2px; }
     .kpi-value-azul { color: #0284c7; }
@@ -60,16 +88,26 @@ st.markdown("""
         text-align: center;
     }
     .gato-centrado { max-width: 220px; height: auto; filter: drop-shadow(0 15px 20px rgba(0,0,0,0.2)); }
-    .stButton>button {
+    .stButton>button, .stFormSubmitButton>button {
         width: 100%; border-radius: 50px; height: 3.6em; font-weight: 800;
         background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%); color: white !important;
         border: none; font-size: 1rem; box-shadow: 0 8px 20px rgba(2, 132, 199, 0.25);
     }
-    .stButton>button:hover { background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); }
+    .stButton>button:hover, .stFormSubmitButton>button:hover { background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); }
+
+    /* Ticket de la orden */
+    .ticket {
+        background:#ffffff; border:2px dashed #7dd3fc; border-radius:14px;
+        padding:18px 22px; font-family: 'Courier New', monospace; color:#1e293b;
+    }
+    .ticket h4 { margin:0 0 6px 0; color:#0369a1; text-align:center; }
+    .ticket .total { font-size:1.3rem; font-weight:800; color:#0d9488; text-align:right; }
     </style>
 """, unsafe_allow_html=True)
 
 if "autenticado" not in st.session_state: st.session_state.autenticado = False
+if "ordenes" not in st.session_state: st.session_state.ordenes = []
+if "ultima_orden" not in st.session_state: st.session_state.ultima_orden = None
 
 # =========================================================
 # 1. CONTROL DE ACCESO (PANTALLA DE LOGIN DE LA EMPRESA)
@@ -79,7 +117,7 @@ if not st.session_state.autenticado:
     col_izq, col_der = st.columns([1, 1.2], gap="large")
     
     with col_izq:
-        img_html = f"<img class='gato-centrado' src='data:image/png;base64,{gato_b64}' />" if gato_b64 else "<p style='color:yellow;'>⚠️ Cargando mascota...</p>"
+        img_html = f"<img class='gato-centrado' src='data:image/png;base64,{gato_b64}' />" if gato_b64 else "<div style='font-size:7rem;'>🧼</div>"
         st.markdown(f"""
             <div class='bloque-azul-corporativo'>
                 <h1 style='color:white; font-size:2.6rem; font-weight:900; margin:0;'>La Espumosa Express</h1>
@@ -93,13 +131,18 @@ if not st.session_state.autenticado:
         st.markdown("<p style='color:#0d9488; font-weight:bold; margin-bottom:0px; font-size:0.85rem;'>BIENVENIDO DE NUEVO</p>", unsafe_allow_html=True)
         st.markdown("<h1 style='margin-top:0px; font-weight:800; color:#1e293b; font-size:2.4rem;'>Inicia sesión</h1>", unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
+
+        if not CLAVE_OK:
+            st.warning("⚠️ Falta configurar las credenciales en *Settings → Secrets* de Streamlit (RUC y CLAVE).")
         
-        ruc_empresa = st.text_input("RUC de la empresa", value="20615475581", max_chars=11)
-        clave_usuario = st.text_input("Contraseña de Acceso", type="password", placeholder="Ingresa la clave de tu lavandería")
-        
-        st.markdown("<br><br>", unsafe_allow_html=True)
-        if st.button("🧼 INRESAR DE FORMA SEGURA"):
-            if ruc_empresa == "20615475581" and clave_usuario == "espumosa3105":
+        with st.form("form_login"):
+            ruc_empresa = st.text_input("RUC de la empresa", value=RUC_OK, max_chars=11)
+            clave_usuario = st.text_input("Contraseña de Acceso", type="password", placeholder="Ingresa la clave de tu lavandería")
+            st.markdown("<br>", unsafe_allow_html=True)
+            entrar = st.form_submit_button("🧼 INGRESAR DE FORMA SEGURA")
+
+        if entrar:
+            if CLAVE_OK and ruc_empresa == RUC_OK and clave_usuario == CLAVE_OK:
                 st.session_state.autenticado = True
                 st.rerun()
             else:
@@ -125,7 +168,7 @@ else:
             st.rerun()
 
     if menu_modulo == "📊 Tablero de Control":
-        c_tit, c_info = st.columns()
+        c_tit, c_info = st.columns([3, 1])
         with c_tit:
             st.markdown("<h1 style='color:#0369a1; font-weight:800; margin:0;'>📊 Dashboard General</h1>", unsafe_allow_html=True)
             st.caption("Resumen financiero y operativo de las últimas actividades.")
@@ -169,14 +212,90 @@ else:
             st.markdown("""<div class='kpi-card' style='border-left: 5px solid #0d9488;'><div class='kpi-title' style='color:#0d9488;'>✔️ Listas para Recoger</div><div class='kpi-value kpi-value-verde'>12</div><div class='kpi-desc'>Listas esperando al cliente.</div></div>""", unsafe_allow_html=True)
 
     elif menu_modulo == "📥 Orden de Servicio":
-        st.markdown("### 📥 Nueva Orden de Servicio")
-        c1, c2 = st.columns(2)
-        with c1:
-            dni_c = st.text_input("DNI del Cliente:")
-            nom_c = st.text_input("Nombre Completo:")
-            tel_c = st.text_input("WhatsApp Celular:", max_chars=9)
-        with c2:
-            serv = st.selectbox("Tipo de Servicio:", ["Ropa por Kilo (S/ 5.00)", "Edredón 2 Plazas (S/ 15.00)"])
-            cant = st.number_input("Cantidad / Kilos:", min_value=0.0, step=0.5)
-        if st.button("💾 GUARDAR PEDIDO"):
-            st.success("¡Pedido registrado exitosamente!")
+        st.markdown("<h1 style='color:#0369a1; font-weight:800; margin:0;'>📥 Nueva Orden de Servicio</h1>", unsafe_allow_html=True)
+        st.caption("Registra al cliente, elige el servicio y genera el ticket.")
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        with st.form("form_orden", clear_on_submit=True):
+            c1, c2 = st.columns(2)
+            with c1:
+                dni_c = st.text_input("DNI del Cliente:", max_chars=8)
+                nom_c = st.text_input("Nombre Completo:")
+                tel_c = st.text_input("WhatsApp Celular:", max_chars=9)
+            with c2:
+                serv = st.selectbox(
+                    "Tipo de Servicio:",
+                    list(SERVICIOS.keys()),
+                    format_func=lambda s: f"{s} (S/ {SERVICIOS[s]:.2f})"
+                )
+                cant = st.number_input("Cantidad / Kilos:", min_value=0.0, step=0.5)
+            guardar = st.form_submit_button("💾 GUARDAR PEDIDO")
+
+        if guardar:
+            errores = []
+            if not (dni_c.isdigit() and len(dni_c) == 8): errores.append("El DNI debe tener 8 dígitos.")
+            if not nom_c.strip(): errores.append("Falta el nombre del cliente.")
+            if not (tel_c.isdigit() and len(tel_c) == 9): errores.append("El WhatsApp debe tener 9 dígitos.")
+            if cant <= 0: errores.append("La cantidad debe ser mayor a 0.")
+
+            if errores:
+                for e in errores:
+                    st.error(e)
+            else:
+                total = SERVICIOS[serv] * cant
+                orden = {
+                    "N° Orden": f"{len(st.session_state.ordenes) + 1:05d}",
+                    "Fecha": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                    "DNI": dni_c,
+                    "Cliente": nom_c.strip().title(),
+                    "WhatsApp": tel_c,
+                    "Servicio": serv,
+                    "Cantidad": cant,
+                    "Total (S/)": round(total, 2),
+                }
+                st.session_state.ordenes.append(orden)
+                st.session_state.ultima_orden = orden
+                st.success("¡Pedido registrado exitosamente!")
+
+        # Ticket de la última orden + envío por WhatsApp
+        o = st.session_state.ultima_orden
+        if o:
+            st.markdown("<br>", unsafe_allow_html=True)
+            t1, t2 = st.columns([1, 1], gap="large")
+            with t1:
+                st.markdown(f"""
+                    <div class='ticket'>
+                        <h4>🧼 LA ESPUMOSA EXPRESS</h4>
+                        <div style='text-align:center; font-size:0.8rem;'>Lavandería · Ticket de orden</div>
+                        <hr style='border-top:1px dashed #94a3b8;'>
+                        <div>Orden N°: <b>{o['N° Orden']}</b></div>
+                        <div>Fecha: {o['Fecha']}</div>
+                        <div>Cliente: {o['Cliente']}</div>
+                        <div>DNI: {o['DNI']}</div>
+                        <hr style='border-top:1px dashed #94a3b8;'>
+                        <div>{o['Servicio']} x {o['Cantidad']}</div>
+                        <div class='total'>TOTAL: S/ {o['Total (S/)']:.2f}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+            with t2:
+                mensaje = (
+                    f"Hola {o['Cliente']} 👋, gracias por confiar en La Espumosa Express 🧼.\n"
+                    f"Tu orden N° {o['N° Orden']} ({o['Servicio']} x {o['Cantidad']}) "
+                    f"por S/ {o['Total (S/)']:.2f} fue registrada. Te avisaremos cuando esté lista."
+                )
+                enlace = f"https://wa.me/51{o['WhatsApp']}?text={urllib.parse.quote(mensaje)}"
+                st.link_button("📲 Enviar ticket por WhatsApp", enlace)
+
+        # Historial de órdenes de la sesión
+        if st.session_state.ordenes:
+            st.markdown("<h3 style='color:#1e293b;'>🗂️ Órdenes registradas</h3>", unsafe_allow_html=True)
+            df = pd.DataFrame(st.session_state.ordenes).iloc[::-1]
+            st.dataframe(df, hide_index=True)
+
+    elif menu_modulo == "🧾 Facturación Electrónica":
+        st.markdown("<h1 style='color:#0369a1; font-weight:800; margin:0;'>🧾 Facturación Electrónica</h1>", unsafe_allow_html=True)
+        st.info("🚧 Módulo en construcción.")
+
+    elif menu_modulo == "📈 Reportes y Dashboards":
+        st.markdown("<h1 style='color:#0369a1; font-weight:800; margin:0;'>📈 Reportes y Dashboards</h1>", unsafe_allow_html=True)
+        st.info("🚧 Módulo en construcción.")
